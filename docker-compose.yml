@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  sport-events-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: sport-events-api
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_PORT=8080
+      - SPRING_JACKSON_SERIALIZATION_WRITE_DATES_AS_TIMESTAMPS=false
+      # Override with a real secret in production:
+      #   APP_SECURITY_API_KEY=my-secret docker compose up
+      - APP_SECURITY_API_KEY=${APP_SECURITY_API_KEY:-dev-api-key-change-in-production}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped

@@ -1,0 +1,19 @@
+# Build output (builder stage copies only what it needs)
+target/
+
+# IDE and OS files
+.idea/
+*.iml
+.DS_Store
+*.swp
+
+# Git
+.git/
+.gitignore
+
+# Local env overrides
+*.env
+.env*
+
+# Test reports
+surefire-reports/
