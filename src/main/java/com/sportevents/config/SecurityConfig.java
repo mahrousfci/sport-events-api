@@ -8,13 +8,18 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -32,6 +37,17 @@ import java.io.IOException;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    private static final RequestMatcher PUBLIC_ENDPOINTS = new OrRequestMatcher(
+        new AntPathRequestMatcher("/api/events/**", HttpMethod.GET.name()),
+        new AntPathRequestMatcher("/swagger-ui.html"),
+        new AntPathRequestMatcher("/swagger-ui/**"),
+        new AntPathRequestMatcher("/api-docs"),
+        new AntPathRequestMatcher("/api-docs/**"),
+        new AntPathRequestMatcher("/api/ws-docs"),
+        new AntPathRequestMatcher("/ws-events/**"),
+        new AntPathRequestMatcher("/h2-console/**")
+    );
 
     @Value("${app.security.api-key}")
     private String apiKey;
@@ -64,25 +80,38 @@ public class SecurityConfig {
 
     /**
      * Filter that checks the {@code X-API-Key} request header on protected routes.
-     * Returns 401 immediately if the key is absent or wrong.
+     * Returns 401 immediately if the key is absent or wrong, otherwise it
+     * marks the request as authenticated for downstream authorization checks.
      */
     private OncePerRequestFilter apiKeyFilter() {
         return new OncePerRequestFilter() {
+            @Override
+            protected boolean shouldNotFilter(HttpServletRequest request) {
+                return PUBLIC_ENDPOINTS.matches(request);
+            }
+
             @Override
             protected void doFilterInternal(HttpServletRequest req,
                                             HttpServletResponse res,
                                             FilterChain chain)
                     throws ServletException, IOException {
-                // Spring Security's authorization rules decide what's protected;
-                // we only validate the key here — Spring will deny access later if needed.
                 String key = req.getHeader("X-API-Key");
-                if (key != null && !key.equals(apiKey)) {
+                if (key == null || !key.equals(apiKey)) {
+                    SecurityContextHolder.clearContext();
                     res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     res.setContentType("application/json");
                     res.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\","
-                            + "\"message\":\"Invalid API key\"}");
+                            + "\"message\":\"Missing or invalid API key\"}");
                     return;
                 }
+
+                UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(
+                                "api-key-client",
+                                null,
+                                AuthorityUtils.NO_AUTHORITIES
+                        );
+                SecurityContextHolder.getContext().setAuthentication(authentication);
                 chain.doFilter(req, res);
             }
         };
