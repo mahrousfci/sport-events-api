@@ -80,16 +80,16 @@ public class SseEmitterRegistry implements EventPublisher {
     private void trySend(SseEmitter emitter, SseEmitter.SseEventBuilder event) {
         try {
             emitter.send(event);
-        } catch (IOException e) {
-            emitter.completeWithError(e);
+        } catch (IOException | IllegalStateException e) {
+            cleanupEmitter(emitter);
         }
     }
 
     private void sendRaw(SseEmitter emitter, String name, String data) {
         try {
             emitter.send(SseEmitter.event().name(name).data(data));
-        } catch (IOException e) {
-            emitter.completeWithError(e);
+        } catch (IOException | IllegalStateException e) {
+            cleanupEmitter(emitter);
         }
     }
 
@@ -99,5 +99,11 @@ public class SseEmitterRegistry implements EventPublisher {
             list.remove(emitter);
             if (list.isEmpty()) eventEmitters.remove(eventId);
         }
+    }
+
+    private void cleanupEmitter(SseEmitter emitter) {
+        globalEmitters.remove(emitter);
+        eventEmitters.values().forEach(list -> list.remove(emitter));
+        eventEmitters.entrySet().removeIf(entry -> entry.getValue().isEmpty());
     }
 }
